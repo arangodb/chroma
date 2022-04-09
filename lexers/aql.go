@@ -18,8 +18,9 @@ var Aql = Register(MustNewLexer(
 	AqlRules,
 ))
 
-var (
+const (
 	aqlIdentifierPattern = "(?:$?|_+)[a-z]+[_a-z0-9]*"
+	aqlBindVariablePattern = "@(?:_+[a-z0-9]+[a-z0-9_]*|[a-z0-9][a-z0-9_]*)"
 	aqlUserFunctionsPattern = `[a-zA-Z0-9][a-zA-Z0-9_]*(?:::[a-zA-Z0-9_]+)+(?=\s*\()`
 	aqlBuiltinFunctionsPattern = "(?:" +
 		"to_bool|to_number|to_string|to_array|to_list|is_null|is_bool|is_number|is_string|is_array|is_list|is_object|is_document|is_datestring|" +
@@ -90,6 +91,11 @@ Comments: single, multi
 
 func AqlRules() Rules {
 	return Rules{
+		"commentsandwhitespace": {
+			{`\s+`, Text, nil},
+			{`//.*?\n`, CommentSingle, nil},
+			{`/\*`, CommentMultiline, Push("multiline-comment")},
+		},
 		"multiline-comment": {
 			{`[^*]+`, CommentMultiline, nil},
 			{`\*/`, CommentMultiline, Pop(1)},
@@ -115,20 +121,35 @@ func AqlRules() Rules {
 			{"[^´\\\\]+", Name, nil},
 			{"´", Name, Pop(1)},
 		},
+		"identifier": {
+			{aqlIdentifierPattern, Name, nil},
+			{"`", Name, Push("backtick")},
+			{"´", Name, Push("forwardtick")},
+		},
+		"bind-variable": {
+			{aqlBindVariablePattern, NameVariable, nil},
+		},
+		"into": {
+			Include("commentsandwhitespace"),
+			{`KEEP\b`, KeywordPseudo, Pop(1)}, // false positives: INTO keep kEEP, INTO coll LET keep
+			Include("identifier"),
+			Include("bind-variable"),
+			Default(Pop(1)),
+		},
 		"root": {
-			{`\s+`, Text, nil},
-			{`//.*?\n`, CommentSingle, nil},
-			{`/\*`, CommentMultiline, Push("multiline-comment")},
+			Include("commentsandwhitespace"),
 			{`0b[01]+`, LiteralNumberBin, nil},
 			{`0x[0-9a-f]+`, LiteralNumberHex, nil},
 			{`(?:(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|\.[0-9]+)(?:e[\-\+]?[0-9]+)?`, LiteralNumberFloat, nil},
 			{`0|[1-9][0-9]*`, LiteralNumberInteger, nil},
-			{`@@?(?:_+[a-z0-9]+[a-z0-9_]*|[a-z0-9][a-z0-9_]*)`, NameVariable, nil},
+			{`@` + aqlBindVariablePattern, NameVariableGlobal, nil}, // bind data source
+			Include("bind-variable"),
 			{`[.,(){}\[\]]`, Punctuation, nil},
 			{aqlUserFunctionsPattern, NameFunction, nil},
 			{`=~|!~|[=!<>]=?|[%?:/*+-]|\.\.|&&|\|\|`, Operator, nil},
 			{`(WITH)(\s+)(COUNT)(\s+)(INTO)\b`, ByGroups(KeywordReserved, Text, KeywordPseudo, Text, KeywordReserved), nil},
-			{`(INTO)(\s+)(` + aqlIdentifierPattern + `)(\s+)(KEEP)\b`, ByGroups(KeywordReserved, Text, Name, Text, KeywordPseudo), nil}, // TODO: bind var? Escaped identifier?
+			//{"(INTO)(\\s+)([`´]?" + aqlIdentifierPattern + "[`´]?)(\\s+)(KEEP)\b", ByGroups(KeywordReserved, Text, Name, Text, KeywordPseudo), nil}, // TODO: bind var? Escaped identifier?
+			{`INTO\b`, KeywordReserved, Push("into")},
 			//{`IN <name> SEARCH`}, // bind var!
 			//{`??? PRUNE`},
 			//{`??? TO`},
@@ -138,11 +159,9 @@ func AqlRules() Rules {
 			{`(true|false|null)\b`, KeywordConstant, nil},
 			{`(?-i)(CURRENT|NEW|OLD)\b`, NameBuiltinPseudo, nil},
 			{aqlBuiltinFunctionsPattern, NameFunction, nil},
-			{aqlIdentifierPattern, Name, nil},
 			{`"`, LiteralStringDouble, Push("double-quote")},
 			{`'`, LiteralStringSingle, Push("single-quote")},
-			{"`", Name, Push("backtick")},
-			{"´", Name, Push("forwardtick")},
+			Include("identifier"),
 		},
 	}
 }
