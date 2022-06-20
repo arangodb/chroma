@@ -12,7 +12,7 @@ var Aql = Register(MustNewLexer(
 		Filenames: []string{"*.aql"},
 		MimeTypes: []string{"application/x-aql"},
 		DotAll: true,
-		EnsureNL: true,
+		EnsureNL: true, // TODO: Necessary for comment-only input? Also normalized line endings to \n it seems
 		CaseInsensitive: true, // except pseudo variables (CURRENT, NEW, OLD)
 	},
 	AqlRules,
@@ -126,16 +126,10 @@ func AqlRules() Rules {
 			{"`", Name, Push("backtick")},
 			{"´", Name, Push("forwardtick")},
 		},
-		"bind-variable": {
-			{aqlBindVariablePattern, NameVariable, nil},
-		},
-		"into": {
-			Include("commentsandwhitespace"),
-			{`KEEP\b`, KeywordPseudo, Pop(1)}, // false positives: INTO keep kEEP, INTO coll LET keep
-			Include("identifier"),
-			Include("bind-variable"),
-			Default(Pop(1)),
-		},
+		//"name-or-bindvar": {
+		//	{aqlBindVariablePattern, NameVariable, nil},
+		//	{".+", Name, nil}, // default
+		//},
 		"root": {
 			Include("commentsandwhitespace"),
 			{`0b[01]+`, LiteralNumberBin, nil},
@@ -143,21 +137,21 @@ func AqlRules() Rules {
 			{`(?:(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|\.[0-9]+)(?:e[\-\+]?[0-9]+)?`, LiteralNumberFloat, nil},
 			{`0|[1-9][0-9]*`, LiteralNumberInteger, nil},
 			{`@` + aqlBindVariablePattern, NameVariableGlobal, nil}, // bind data source
-			Include("bind-variable"),
+			{aqlBindVariablePattern, NameVariable, nil},
+			{`=~|!~|[=!<>]=?|[%?:/*+-]|\.\.|&&|\|\|`, Operator, nil}, // .. before .
 			{`[.,(){}\[\]]`, Punctuation, nil},
 			{aqlUserFunctionsPattern, NameFunction, nil},
-			{`=~|!~|[=!<>]=?|[%?:/*+-]|\.\.|&&|\|\|`, Operator, nil},
 			{`(WITH)(\s+)(COUNT)(\s+)(INTO)\b`, ByGroups(KeywordReserved, Text, KeywordPseudo, Text, KeywordReserved), nil},
-			//{"(INTO)(\\s+)([`´]?" + aqlIdentifierPattern + "[`´]?)(\\s+)(KEEP)\b", ByGroups(KeywordReserved, Text, Name, Text, KeywordPseudo), nil}, // TODO: bind var? Escaped identifier?
-			{`INTO\b`, KeywordReserved, Push("into")},
-			//{`IN <name> SEARCH`}, // bind var!
-			//{`??? PRUNE`},
-			//{`??? TO`},
+			// Curiously, the (unsupported?) backreference \4 leads to a duplicated forward tick ´bla´´
+			// {"(INTO)(\\s+)(" + aqlBindVariablePattern + "|([`´]?)" + aqlIdentifierPattern + "\\4)(\\s+)(KEEP)\\b", ByGroups(KeywordReserved, Text, Name, Name, Text, KeywordPseudo), nil},
+			// A lot of complexity only to prevent some false-positives for KEEP...
+			//{"(INTO)(\\s+)(" + aqlBindVariablePattern + "|[`´]?" + aqlIdentifierPattern + "[`´]?)(\\s+)(KEEP)\\b", ByGroups(KeywordReserved, Text, UsingSelf("name-or-bindvar"), Text, KeywordPseudo), nil},
+			{`(?:KEEP|PRUNE|SEARCH|TO)\b`, KeywordPseudo, nil}, // false-positives are likely
 			{`OPTIONS\s*\{`, KeywordPseudo, nil},
 			{`(?:AGGREGATE|ALL|AND|ANY|ASC|COLLECT|DESC|DISTINCT|FILTER|FOR|GRAPH|IN|INBOUND|INSERT|INTO|K_PATHS|K_SHORTEST_PATHS|LIKE|LIMIT|NONE|NOT|OR|OUTBOUND|REMOVE|REPLACE|RETURN|SHORTEST_PATH|SORT|UPDATE|UPSERT|WITH|WINDOW)\b`, KeywordReserved, nil},
 			{`LET\b`, KeywordDeclaration, nil}, // also WITH but only at the beginning of a query
-			{`(true|false|null)\b`, KeywordConstant, nil},
-			{`(?-i)(CURRENT|NEW|OLD)\b`, NameBuiltinPseudo, nil},
+			{`(?:true|false|null)\b`, KeywordConstant, nil},
+			{`(?-i)(?:CURRENT|NEW|OLD)\b`, NameBuiltinPseudo, nil},
 			{aqlBuiltinFunctionsPattern, NameFunction, nil},
 			{`"`, LiteralStringDouble, Push("double-quote")},
 			{`'`, LiteralStringSingle, Push("single-quote")},
