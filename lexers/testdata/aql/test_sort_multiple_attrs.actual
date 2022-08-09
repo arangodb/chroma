@@ -1,0 +1,8 @@
+FOR c IN Characters
+    FILTER c.surname
+    SORT c.surname, c.name
+    LIMIT 10
+    RETURN {
+        surname: c.surname,
+        name: c.name
+    }

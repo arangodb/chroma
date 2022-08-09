@@ -1,0 +1,3 @@
+FOR c IN Characters
+    FILTER c.age >= 13
+    RETURN c.name

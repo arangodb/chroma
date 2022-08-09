@@ -1,0 +1,9 @@
+FOR c IN Characters
+  RETURN MERGE(c, {
+    traits: (
+      FOR key IN c.traits
+        FOR t IN Traits
+          FILTER t._key == key
+          RETURN t.en
+    )
+  })

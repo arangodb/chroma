@@ -1,0 +1,7 @@
+INSERT {
+    "name": "Ned",
+    "surname": "Stark",
+    "alive": true,
+    "age": 41,
+    "traits": ["A","H","C","N","P"]
+} INTO Characters
