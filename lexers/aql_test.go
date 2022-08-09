@@ -87,7 +87,7 @@ func write(testName, code string) error {
 	}
 
 	// Prepare output file
-	os.Truncate("/home/dan/test.html", 100)
+	os.Truncate("testdata/aql/%s.html", 100)
 	file, err := os.Create(fmt.Sprintf("testdata/aql/%s.html", testName))
 	err = f.Format(file, s, it)
 
